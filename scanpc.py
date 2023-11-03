@@ -2,7 +2,7 @@ import getpass
 import socket
 import psutil
 import nmap
-
+import wmi
 class Computer():
 
     def __init__(self):
@@ -49,26 +49,67 @@ class Computer():
 
         return all_ips
     
-    def getDisksInfo(self) -> dict:
-        partitions = psutil.disk_partitions()
+    def DisksInfoPsutil(self):
         disk_info = []
+        partitions = psutil.disk_partitions()
 
         for partition in partitions:
             try:
                 partition_usage = psutil.disk_usage(partition.mountpoint)
                 disk_info.append({
-                    "device": partition.device,
-                    "mountpoint": partition.mountpoint,
-                    "total_size": partition_usage.total,
-                    "used_size": partition_usage.used,
-                    "free_size": partition_usage.free
+                    'Mount Point': partition.mountpoint,
+                    'Device': partition.device,
+                    'Total Size': partition_usage.total,
+                    'Free Space': partition_usage.free,
+                    'Used Space': partition_usage.used,
+                    'File System Type': partition.fstype
                 })
-            except PermissionError:
-                # Manejar errores de permisos al acceder a las particiones
-                pass
+            except Exception as e:
+                print(f"Error obtaining information for {partition.mountpoint}: {e}")
 
         return disk_info
 
+    def DisksInfoWMI(self):
+        # Conectarse a la clase Win32_LogicalDisk de WMI
+        w = wmi.WMI()
+
+        disk_info = []
+        for disk in w.Win32_LogicalDisk():
+            disk_info.append({
+                'Volume Name': disk.VolumeName,
+                'File System Type': disk.FileSystem,
+                'DeviceID': disk.DeviceID,
+                'Total Size': disk.Size ,
+                'Free Space': disk.FreeSpace, 
+                'Used Space': disk.Size,
+            })
+        return disk_info
+    def getDisksInfo(self):
+        combined_info = []
+
+        # Obtener información de psutil
+        psutil_info = self.DisksInfoPsutil()
+
+        # Obtener información de wmi
+        wmi_info = self.DisksInfoWMI()
+
+        # Combinar la información de psutil y wmi
+        for psutil_disk in psutil_info:
+            for wmi_disk in wmi_info:
+                if psutil_disk['Mount Point'][:2] == wmi_disk['DeviceID']:
+                    combined_info.append({
+                        'Mount Point': psutil_disk['Mount Point'],
+                        'Total Size': psutil_disk['Total Size'],
+                        'Free Space': psutil_disk['Free Space'],
+                        'Used Space': psutil_disk['Used Space'],
+                        'File System Type': psutil_disk['File System Type'],
+                        'Volume Name': wmi_disk['Volume Name'],
+                        'DeviceID': wmi_disk['DeviceID']
+                    })
+                    break
+
+        return combined_info
+    
     def GetPortsOpenLocal(self) -> dict:
         nm = nmap.PortScanner()
         nm.scan('127.0.0.1', arguments='-p- -sS')  # Escaneo rápido de puertos en la dirección IP local
@@ -114,7 +155,7 @@ class Computer():
             file.write("# Resumen de Información\n\n")
             for key, value in resumen.items():
                 if key == "Disk Information":
-                    disks_summary = [f"{disk['device']} ({self._get_size_info(disk['total_size'])})" for disk in value]
+                    disks_summary = [f"{disk['mountp oint']} ({self._get_size_info(disk['total_size'])})" for disk in value]
                     file.write(f"- **{key}:** {', '.join(disks_summary)}\n")
                 else:
                     file.write(f"- **{key}:** {value}\n")
@@ -126,10 +167,14 @@ class Computer():
             for key, value in full_info.items():
                 if key == "Disk Information":
                     file.write(f"## {key}\n\n")
-                    file.write("| Device | Mountpoint | Total Size | Used Size | Free Size |\n")
+                    file.write("| Device | Model | Total Size | Rotational | Mountpoint |\n")
                     file.write("| --- | --- | --- | --- | --- |\n")
                     for disk in value:
-                        file.write(f"| {disk['device']} | {disk['mountpoint']} | {self._get_size_info(disk['total_size'])} | {self._get_size_info(disk['used_size'])} | {self._get_size_info(disk['free_size'])} |\n")
+                        mountpoint = disk.get('mountpoint', 'Unknown')
+                        total_size = self._get_size_info(disk['total_size'])
+                        used_size = self._get_size_info(disk['used_size'])
+                        free_size = self._get_size_info(disk['free_size'])
+                        file.write(f"| {mountpoint} | {total_size} | {used_size} | {free_size} |\n")
                     file.write("\n")
                 elif key == "All IP Connections":
                     file.write(f"## {key}\n\n")
@@ -165,6 +210,7 @@ class Computer():
         print(f"Informe generado en '{file_name}'")
 
     def _get_size_info(self, size):
+        size = int(size)
         if size < 1024:
             return f"{size} B"
         elif size < 1024 * 1024:
@@ -175,4 +221,7 @@ class Computer():
             return f"{size / (1024 * 1024 * 1024):.2f} GB"
 
 mi_equipo = Computer()
-mi_equipo.generar_informe('informe_mi_equipo3.md')
+ls = mi_equipo.getDisksInfo()
+
+print(ls)
+# mi_equipo.generar_informe('informenuevo.md')
