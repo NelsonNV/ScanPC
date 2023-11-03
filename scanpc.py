@@ -82,6 +82,7 @@ class Computer():
                 'Total Size': disk.Size ,
                 'Free Space': disk.FreeSpace, 
                 'Used Space': disk.Size,
+                'serial_number': disk.VolumeSerialNumber
             })
         return disk_info
     def getDisksInfo(self):
@@ -104,7 +105,8 @@ class Computer():
                         'Used Space': psutil_disk['Used Space'],
                         'File System Type': psutil_disk['File System Type'],
                         'Volume Name': wmi_disk['Volume Name'],
-                        'DeviceID': wmi_disk['DeviceID']
+                        'DeviceID': wmi_disk['DeviceID'],
+                        "serial_number": wmi_disk['serial_number']
                     })
                     break
 
