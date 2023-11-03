@@ -62,7 +62,7 @@ class Computer():
                     'Total Size': partition_usage.total,
                     'Free Space': partition_usage.free,
                     'Used Space': partition_usage.used,
-                    'File System Type': partition.fstype
+                    'File System Type': partition.fstype,
                 })
             except Exception as e:
                 print(f"Error obtaining information for {partition.mountpoint}: {e}")
@@ -82,7 +82,8 @@ class Computer():
                 'Total Size': disk.Size ,
                 'Free Space': disk.FreeSpace, 
                 'Used Space': disk.Size,
-                'serial_number': disk.VolumeSerialNumber
+                'serial_number': disk.VolumeSerialNumber,
+                'Model': disk
             })
         return disk_info
     def getDisksInfo(self):
@@ -106,7 +107,7 @@ class Computer():
                         'File System Type': psutil_disk['File System Type'],
                         'Volume Name': wmi_disk['Volume Name'],
                         'DeviceID': wmi_disk['DeviceID'],
-                        "serial_number": wmi_disk['serial_number']
+                        'Serial Number': wmi_disk['serial_number']
                     })
                     break
 
@@ -157,7 +158,7 @@ class Computer():
             file.write("# Resumen de Información\n\n")
             for key, value in resumen.items():
                 if key == "Disk Information":
-                    disks_summary = [f"{disk['mountp oint']} ({self._get_size_info(disk['total_size'])})" for disk in value]
+                    disks_summary = [f"{disk['Mount Point']} ({self._get_size_info(disk['Total Size'])})" for disk in value]
                     file.write(f"- **{key}:** {', '.join(disks_summary)}\n")
                 else:
                     file.write(f"- **{key}:** {value}\n")
@@ -169,14 +170,16 @@ class Computer():
             for key, value in full_info.items():
                 if key == "Disk Information":
                     file.write(f"## {key}\n\n")
-                    file.write("| Device | Model | Total Size | Rotational | Mountpoint |\n")
+                    file.write("|Volume Name| Mount Point | Total Size | Rotational | Serial Number |\n")
                     file.write("| --- | --- | --- | --- | --- |\n")
                     for disk in value:
-                        mountpoint = disk.get('mountpoint', 'Unknown')
-                        total_size = self._get_size_info(disk['total_size'])
-                        used_size = self._get_size_info(disk['used_size'])
-                        free_size = self._get_size_info(disk['free_size'])
-                        file.write(f"| {mountpoint} | {total_size} | {used_size} | {free_size} |\n")
+                        mountpoint = disk.get('Mount Point', 'Unknown')
+                        total_size = self._get_size_info(disk['Total Size'])
+                        used_size = self._get_size_info(disk['Used Space'])
+                        free_size = self._get_size_info(disk['Free Space'])
+                        serial_number = disk['Serial Number']
+                        volume_name = volume_name = disk['Volume Name'] if disk.get('Volume Name') else 'Disco Local'
+                        file.write(f"|{volume_name}| {mountpoint} | {total_size} | {used_size} | {free_size} |{serial_number}|\n")
                     file.write("\n")
                 elif key == "All IP Connections":
                     file.write(f"## {key}\n\n")
@@ -221,9 +224,3 @@ class Computer():
             return f"{size / (1024 * 1024):.2f} MB"
         else:
             return f"{size / (1024 * 1024 * 1024):.2f} GB"
-
-mi_equipo = Computer()
-ls = mi_equipo.getDisksInfo()
-
-print(ls)
-# mi_equipo.generar_informe('informenuevo.md')
