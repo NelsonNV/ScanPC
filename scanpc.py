@@ -3,12 +3,17 @@ import socket
 import psutil
 import nmap
 import wmi
+import cpuinfo
+
+
 class Computer():
 
     def __init__(self):
         self.computerName = socket.gethostname()
         self.adressIP = self.getAdressIp()
         self.userName = getpass.getuser()
+        self.macAddress = self.getMacAddress()
+        self.domain = self.getDomainName()
 
     def setEthernetIp(self, ip):
         self.adressIP = ip
@@ -34,22 +39,34 @@ class Computer():
 
     def getUserName(self):
         return self.userName
-    def getAllIp(self) -> dict:
-        """todos las conexiones del dispositivo
-
-        Returns:
-            all_ips: un diccionario con todas las direcciones ip y nombres de las interfaces
-        """
+    def getAllMacAddress(self):
+        interfaces = psutil.net_if_addrs()
+        mac_addresses = {}
+        
+        for interface, addrs in interfaces.items():
+            for addr in addrs:
+                if addr.family == psutil.AF_LINK:  # Verifica que sea una dirección MAC
+                    mac_addresses[interface] = addr.address
+        
+        return mac_addresses
+    def getAllIpWithMAC():
         all_ips = {}
         interfaces = psutil.net_if_addrs()
         for interface, addrs in interfaces.items():
-            ips = [addr.address for addr in addrs if addr.family == socket.AF_INET]
-            if ips:
-                all_ips[interface] = ips
-
+            ip_addresses = []
+            mac_address = 'Unknown'
+            for addr in addrs:
+                if addr.family == socket.AF_INET:
+                    ip_addresses.append(addr.address)
+                elif addr.family == psutil.AF_LINK:
+                    mac_address = addr.address
+            if ip_addresses:
+                all_ips[interface] = {
+                    'IPs': ip_addresses,
+                    'MAC': mac_address
+                }
         return all_ips
-    
-    def DisksInfoPsutil(self):
+    def DisksInfoPsutil(self) -> dict:
         disk_info = []
         partitions = psutil.disk_partitions()
 
@@ -69,7 +86,7 @@ class Computer():
 
         return disk_info
 
-    def DisksInfoWMI(self):
+    def DisksInfoWMI(self) -> dict:
         # Conectarse a la clase Win32_LogicalDisk de WMI
         w = wmi.WMI()
 
@@ -86,7 +103,7 @@ class Computer():
                 'Model': disk
             })
         return disk_info
-    def getDisksInfo(self):
+    def getDisksInfo(self) -> dict:
         combined_info = []
 
         # Obtener información de psutil
@@ -132,25 +149,45 @@ class Computer():
     def Resumendic(self) -> dict:
         resumen_info = {
             "Computer Name": self.getComputerName(),
+            "Domain PC":self.domain,
             "IP Address": self.getAdressIp(),
             "User Name": self.getUserName(),
             "Disk Information": self.getDisksInfo()
         }
         return resumen_info
 
+
+    def getCpuDetails(self)-> dict:
+        info = cpuinfo.get_cpu_info()
+
+        cpu_info = {
+            "Model": info["brand_raw"],
+            "Architecture": info["arch"],
+            "Bits": info["bits"],
+            "Cores": info["count"],
+            "CPU Frequency": info["hz_actual_friendly"],
+            "L2 Cache Size": info['l2_cache_size'],
+            "L3 Cache Size": info['l3_cache_size']
+        }
+        return cpu_info
+
+    def getDomainName(self):
+        c = wmi.WMI()
+        computer = c.Win32_ComputerSystem()
+        domain = computer[0].Domain
+        return domain
+
     def FullInfoDic(self) -> dict:
         full_info = {
             "Computer Name": self.getComputerName(),
             "IP Address": self.getAdressIp(),
             "User Name": self.getUserName(),
-            "All IP Connections": self.getAllIp(),
+            "All IP Connections": self.getAllIpWithMAC(),
             "Disk Information": self.getDisksInfo(),
-            "Open Ports Local": self.GetPortsOpenLocal()
+            "Open Ports Local": self.GetPortsOpenLocal(),
+            "CPU Info": self.getCpuDetails()
         }
         return full_info
-    
-
-
 
     def generar_informe(self, file_name='informe_equipo.md') -> None:
         with open(file_name, 'w') as file:
@@ -166,8 +203,17 @@ class Computer():
 
             full_info = self.FullInfoDic()
             file.write("# Información Completa\n\n")
-            
+
+            # Agregar información detallada de la CPU
+            cpu_info = full_info['CPU Info']
+            file.write("## CPU Info\n")
+            file.write("| Model | Architecture | Bits | Cores | CPU Frequency | L2 Cache Size | L3 Cache Size |\n")
+            file.write("|---|---|---|--- |---| ---| ---|\n")
+            file.write(f"| {cpu_info['Model']} | {cpu_info['Architecture']} | {cpu_info['Bits']} | {cpu_info['Cores']} | {cpu_info['CPU Frequency']} | {cpu_info['L2 Cache Size']} | {cpu_info['L3 Cache Size']} |\n\n")
+
             for key, value in full_info.items():
+                # Resto del código para las otras secciones
+
                 if key == "Disk Information":
                     file.write(f"## {key}\n\n")
                     file.write("|Volume Name| Mount Point | Total Size | Rotational | Serial Number |\n")
@@ -183,8 +229,8 @@ class Computer():
                     file.write("\n")
                 elif key == "All IP Connections":
                     file.write(f"## {key}\n\n")
-                    file.write("| Interface Name | IP Address |\n")
-                    file.write("| --- | --- |\n")
+                    file.write("| Interface Name | IP Address | MAC Address|\n")
+                    file.write("| --- | --- |--- |\n")
                     for interface, ips in value.items():
                         for ip in ips:
                             file.write(f"| {interface} | {ip} |\n")
@@ -197,24 +243,11 @@ class Computer():
                         service_name = info['service'] if info['service'] and info['service'].isascii() else "Desconocido"
                         file.write(f"| {port} | {service_name} | {info['state']} | {info['reason']} |\n")
                     file.write("\n")
-                else:
-                    file.write(f"## {key}\n\n")
-                    if isinstance(value, list) or isinstance(value, dict):
-                        for k, v in value.items() if isinstance(value, dict) else enumerate(value):
-                            if isinstance(v, dict):
-                                file.write(f"### {k}\n")
-                                for inner_k, inner_v in v.items():
-                                    file.write(f"- **{inner_k}:** {inner_v}\n")
-                                file.write("\n")
-                            else:
-                                file.write(f"- **{k}:** {v}\n")
-                        file.write("\n")
-                    else:
-                        file.write(f"- **{value}**\n\n")
+
 
         print(f"Informe generado en '{file_name}'")
 
-    def _get_size_info(self, size):
+    def _get_size_info(self, size) -> str:
         size = int(size)
         if size < 1024:
             return f"{size} B"
