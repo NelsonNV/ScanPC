@@ -4,7 +4,7 @@ import psutil
 import nmap
 import wmi
 import cpuinfo
-
+import datetime
 
 class Computer():
 
@@ -12,21 +12,23 @@ class Computer():
         self.computerName = socket.gethostname()
         self.adressIP = self.getAdressIp()
         self.userName = getpass.getuser()
-        self.macAddress = self.getMacAddress()
         self.domain = self.getDomainName()
+        self.fileName = f"{self.computerName}_Informe_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.md"
 
     def setEthernetIp(self, ip):
         self.adressIP = ip
 
     def setWirelessIp(self, ip):
         self.wirelessIP = ip
-
+    def setFileName(self, ip):
+        self.wirelessIP = ip
     def setUserName(self, user):
         self.userName = user
 
     def getComputerName(self):
         return self.computerName
-
+    def getFileName(self):
+        return self.fileName
     def getAdressIp(self):
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -49,7 +51,7 @@ class Computer():
                     mac_addresses[interface] = addr.address
         
         return mac_addresses
-    def getAllIpWithMAC():
+    def getAllIpWithMAC(self):
         all_ips = {}
         interfaces = psutil.net_if_addrs()
         for interface, addrs in interfaces.items():
@@ -182,6 +184,7 @@ class Computer():
             "Computer Name": self.getComputerName(),
             "IP Address": self.getAdressIp(),
             "User Name": self.getUserName(),
+            "Domain PC":self.domain,
             "All IP Connections": self.getAllIpWithMAC(),
             "Disk Information": self.getDisksInfo(),
             "Open Ports Local": self.GetPortsOpenLocal(),
@@ -189,63 +192,6 @@ class Computer():
         }
         return full_info
 
-    def generar_informe(self, file_name='informe_equipo.md') -> None:
-        with open(file_name, 'w') as file:
-            resumen = self.Resumendic()
-            file.write("# Resumen de Información\n\n")
-            for key, value in resumen.items():
-                if key == "Disk Information":
-                    disks_summary = [f"{disk['Mount Point']} ({self._get_size_info(disk['Total Size'])})" for disk in value]
-                    file.write(f"- **{key}:** {', '.join(disks_summary)}\n")
-                else:
-                    file.write(f"- **{key}:** {value}\n")
-            file.write("\n\n")
-
-            full_info = self.FullInfoDic()
-            file.write("# Información Completa\n\n")
-
-            # Agregar información detallada de la CPU
-            cpu_info = full_info['CPU Info']
-            file.write("## CPU Info\n")
-            file.write("| Model | Architecture | Bits | Cores | CPU Frequency | L2 Cache Size | L3 Cache Size |\n")
-            file.write("|---|---|---|--- |---| ---| ---|\n")
-            file.write(f"| {cpu_info['Model']} | {cpu_info['Architecture']} | {cpu_info['Bits']} | {cpu_info['Cores']} | {cpu_info['CPU Frequency']} | {cpu_info['L2 Cache Size']} | {cpu_info['L3 Cache Size']} |\n\n")
-
-            for key, value in full_info.items():
-                # Resto del código para las otras secciones
-
-                if key == "Disk Information":
-                    file.write(f"## {key}\n\n")
-                    file.write("|Volume Name| Mount Point | Total Size | Rotational | Serial Number |\n")
-                    file.write("| --- | --- | --- | --- | --- |\n")
-                    for disk in value:
-                        mountpoint = disk.get('Mount Point', 'Unknown')
-                        total_size = self._get_size_info(disk['Total Size'])
-                        used_size = self._get_size_info(disk['Used Space'])
-                        free_size = self._get_size_info(disk['Free Space'])
-                        serial_number = disk['Serial Number']
-                        volume_name = volume_name = disk['Volume Name'] if disk.get('Volume Name') else 'Disco Local'
-                        file.write(f"|{volume_name}| {mountpoint} | {total_size} | {used_size} | {free_size} |{serial_number}|\n")
-                    file.write("\n")
-                elif key == "All IP Connections":
-                    file.write(f"## {key}\n\n")
-                    file.write("| Interface Name | IP Address | MAC Address|\n")
-                    file.write("| --- | --- |--- |\n")
-                    for interface, ips in value.items():
-                        for ip in ips:
-                            file.write(f"| {interface} | {ip} |\n")
-                    file.write("\n")
-                elif key == "Open Ports Local":
-                    file.write(f"## {key}\n\n")
-                    file.write("| Port | Service | State | Reason |\n")
-                    file.write("| --- | --- | --- | --- |\n")
-                    for port, info in value.items():
-                        service_name = info['service'] if info['service'] and info['service'].isascii() else "Desconocido"
-                        file.write(f"| {port} | {service_name} | {info['state']} | {info['reason']} |\n")
-                    file.write("\n")
-
-
-        print(f"Informe generado en '{file_name}'")
 
     def _get_size_info(self, size) -> str:
         size = int(size)
@@ -257,3 +203,72 @@ class Computer():
             return f"{size / (1024 * 1024):.2f} MB"
         else:
             return f"{size / (1024 * 1024 * 1024):.2f} GB"
+        
+    def generar_informe(self) -> dict:
+        try:
+            file_name= self.getFileName()
+            with open(file_name, 'w', encoding='utf-8') as file:
+                full_info = self.FullInfoDic()
+
+                # Sección del resumen
+                file.write("# Resumen de Información\n\n")
+                file.write(f"- **User Name:** {full_info['User Name']}\n")
+                file.write(f"- **Computer Name:** {full_info['Computer Name']}\n")
+                file.write(f"- **Model CPU:** {full_info['CPU Info']['Model']}\n")
+                file.write(f"- **Domain PC:** {full_info['Domain PC']}\n")
+                file.write(f"- **IP Address:** {full_info['IP Address']}\n")
+                file.write("\n**Disk Information:**\n\n")
+                file.write("| Mount Point | Total Size |\n")
+                file.write("| --- | --- |\n")
+                for disk in full_info['Disk Information']:
+                    file.write(f"| {disk['Mount Point']} | {self._get_size_info(disk['Total Size'])} |\n")
+
+                file.write("\n\n# Información Completa\n\n")
+                
+                # Información de todas las conexiones IP con sus MACs
+                file.write("- **All IP Connections:**\n\n")
+                file.write("| Interface Name | IP Address | MAC Address |\n")
+                file.write("| --- | --- | --- |\n")
+                for interface, info in full_info['All IP Connections'].items():
+                    file.write(f"| {interface} | {info['IPs'][0]} | {info['MAC']} |\n")
+                file.write("\n\n# CPU Information\n\n")
+                file.write("| Property | Value |\n")
+                file.write("| --- | --- |\n")
+                for key, value in full_info['CPU Info'].items():
+                    file.write(f"| {key} | {value} |\n")
+                file.write(" \n\n# **Disk Information:**\n\n")
+                file.write("| Mount Point | Total Size | Free Space | Used Space | File System Type | Volume Name | Serial Number |\n")
+                file.write("| --- | --- | --- | --- | --- | --- | --- |\n")
+                for disk in full_info['Disk Information']:
+                    volume_name = volume_name = disk['Volume Name'] if disk.get('Volume Name') and disk['Volume Name'] != '' else 'N/A'
+                    file.write(f"| {disk['Mount Point']} | {self._get_size_info(disk['Total Size'])} | {self._get_size_info(disk['Free Space'])} | {self._get_size_info(disk['Used Space'])} | {disk['File System Type']} | {volume_name} | {disk['Serial Number']} |\n")
+                # Sección de los puertos abiertos
+                file.write("\n\n# Open Ports Information\n\n")
+                file.write("| Port | Service | State | Reason |\n")
+                file.write("| --- | --- | --- | --- |\n")
+                for port, info in full_info['Open Ports Local'].items():
+                    if info['service'].lower() in ['http', 'https', 'ftp', 'ssh', 'telnet']:
+                        file.write(f"| **{port}** | **{info['service']}** | **{info['state']}** | **{info['reason']}** |\n")
+                    else:
+                        file.write(f"| {port} | {info['service']} | {info['state']} | {info['reason']} |\n")
+                            # Resto de la información detallada para el informe completo...
+
+            return {
+                'status': 'success',
+                'description': f"Informe generado en '{file_name}'"
+            }
+        except FileNotFoundError as e:
+            return {
+                'status': 'error',
+                'description': f"No se encontró el archivo: {str(e)}"
+            }
+        except PermissionError as e:
+            return {
+                'status': 'error',
+                'description': f"Error de permisos al crear el archivo: {str(e)}"
+            }
+        except Exception as e:
+            return {
+                'status': 'error',
+                'description': f"Error al generar el informe: {str(e)}"
+            }
