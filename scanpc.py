@@ -1,12 +1,13 @@
 from computer import Computer
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem,QTabWidget,QHBoxLayout
+from PyQt5.QtGui import QIcon
 
 class ComputerGUI(QWidget):
     def __init__(self, computer):
         super().__init__()
 
-        self.computer = Computer()
+        self.computer = computer
 
         # Cuadro principal para mostrar los detalles del resumen
         self.summary_label = QLabel()
@@ -21,7 +22,13 @@ class ComputerGUI(QWidget):
         self.filename_input = QLineEdit()
         self.filename_input.setText(self.computer.getFileName())
 
-        # Tablas individuales para cada sección de datos
+        # Botón para generar el informe
+        self.generate_report_button = QPushButton("Generar Informe")
+        self.generate_report_button.clicked.connect(self.generate_report)
+
+        # Crear pestañas para las tablas
+        self.table_tabs = QTabWidget()
+
         self.ip_connections_table = QTableWidget()
         self.disk_info_table = QTableWidget()
         self.open_ports_table = QTableWidget()
@@ -32,20 +39,27 @@ class ComputerGUI(QWidget):
         self.populate_open_ports_table()
         self.populate_cpu_info_table()
 
-        # Botón para generar el informe
-        self.generate_report_button = QPushButton("Generar Informe")
-        self.generate_report_button.clicked.connect(self.generate_report)
+        # Agregar las tablas a las pestañas
+        self.table_tabs.addTab(self.ip_connections_table, "Conexiones IP")
+        self.table_tabs.addTab(self.disk_info_table, "Información del Disco")
+        self.table_tabs.addTab(self.open_ports_table, "Puertos Abiertos")
+        self.table_tabs.addTab(self.cpu_info_table, "Información de la CPU")
+
+        # Establecer tamaño fijo de la ventana
+        self.setFixedSize(720, 400)
 
         layout = QVBoxLayout()
         layout.addWidget(self.summary_label)
         layout.addWidget(self.domain_label)
-        layout.addWidget(self.filename_label)
-        layout.addWidget(self.filename_input)
-        layout.addWidget(self.ip_connections_table)
-        layout.addWidget(self.disk_info_table)
-        layout.addWidget(self.open_ports_table)
-        layout.addWidget(self.cpu_info_table)
-        layout.addWidget(self.generate_report_button)
+
+        # Agrupar el campo de nombre de archivo y el botón
+        filename_layout = QHBoxLayout()
+        filename_layout.addWidget(self.filename_label)
+        filename_layout.addWidget(self.filename_input)
+        filename_layout.addWidget(self.generate_report_button)
+
+        layout.addLayout(filename_layout)
+        layout.addWidget(self.table_tabs)
 
         self.setLayout(layout)
         self.setWindowTitle("Información del Equipo")
@@ -133,8 +147,9 @@ if __name__ == '__main__':
 
     # Crear una instancia de la clase Computer
     computer_instance = Computer()  # Asegúrate de pasar los argumentos necesarios si hay alguna configuración específica
-
     window = ComputerGUI(computer_instance)
+    window.setWindowIcon(QIcon('icon_scanpc.ico'))
+    window.setWindowTitle('ScanPC')
     window.show()
 
     sys.exit(app.exec_())
