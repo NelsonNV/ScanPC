@@ -1,274 +1,140 @@
-import getpass
-import socket
-import psutil
-import nmap
-import wmi
-import cpuinfo
-import datetime
+from computer import Computer
+import sys
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem
 
-class Computer():
+class ComputerGUI(QWidget):
+    def __init__(self, computer):
+        super().__init__()
 
-    def __init__(self):
-        self.computerName = socket.gethostname()
-        self.adressIP = self.getAdressIp()
-        self.userName = getpass.getuser()
-        self.domain = self.getDomainName()
-        self.fileName = f"{self.computerName}_Informe_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.md"
+        self.computer = Computer()
 
-    def setEthernetIp(self, ip):
-        self.adressIP = ip
+        # Cuadro principal para mostrar los detalles del resumen
+        self.summary_label = QLabel()
+        self.update_summary_label()
 
-    def setWirelessIp(self, ip):
-        self.wirelessIP = ip
-    def setFileName(self, ip):
-        self.wirelessIP = ip
-    def setUserName(self, user):
-        self.userName = user
+        # Campo para mostrar el dominio
+        self.domain_label = QLabel()
+        self.update_domain_label()
 
-    def getComputerName(self):
-        return self.computerName
-    def getFileName(self):
-        return self.fileName
-    def getAdressIp(self):
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))  # Conectarse a un servidor externo
-            ip = s.getsockname()[0]
-            s.close()
-            return ip
-        except socket.error:
-            return None
+        # Campo para cambiar el nombre del archivo
+        self.filename_label = QLabel("Nombre del archivo a exportar:")
+        self.filename_input = QLineEdit()
+        self.filename_input.setText(self.computer.getFileName())
 
-    def getUserName(self):
-        return self.userName
-    def getAllMacAddress(self):
-        interfaces = psutil.net_if_addrs()
-        mac_addresses = {}
-        
-        for interface, addrs in interfaces.items():
-            for addr in addrs:
-                if addr.family == psutil.AF_LINK:  # Verifica que sea una dirección MAC
-                    mac_addresses[interface] = addr.address
-        
-        return mac_addresses
-    def getAllIpWithMAC(self):
-        all_ips = {}
-        interfaces = psutil.net_if_addrs()
-        for interface, addrs in interfaces.items():
-            ip_addresses = []
-            mac_address = 'Unknown'
-            for addr in addrs:
-                if addr.family == socket.AF_INET:
-                    ip_addresses.append(addr.address)
-                elif addr.family == psutil.AF_LINK:
-                    mac_address = addr.address
-            if ip_addresses:
-                all_ips[interface] = {
-                    'IPs': ip_addresses,
-                    'MAC': mac_address
-                }
-        return all_ips
-    def DisksInfoPsutil(self) -> dict:
-        disk_info = []
-        partitions = psutil.disk_partitions()
+        # Tablas individuales para cada sección de datos
+        self.ip_connections_table = QTableWidget()
+        self.disk_info_table = QTableWidget()
+        self.open_ports_table = QTableWidget()
+        self.cpu_info_table = QTableWidget()
 
-        for partition in partitions:
-            try:
-                partition_usage = psutil.disk_usage(partition.mountpoint)
-                disk_info.append({
-                    'Mount Point': partition.mountpoint,
-                    'Device': partition.device,
-                    'Total Size': partition_usage.total,
-                    'Free Space': partition_usage.free,
-                    'Used Space': partition_usage.used,
-                    'File System Type': partition.fstype,
-                })
-            except Exception as e:
-                print(f"Error obtaining information for {partition.mountpoint}: {e}")
+        self.populate_ip_connections_table()
+        self.populate_disk_info_table()
+        self.populate_open_ports_table()
+        self.populate_cpu_info_table()
 
-        return disk_info
+        # Botón para generar el informe
+        self.generate_report_button = QPushButton("Generar Informe")
+        self.generate_report_button.clicked.connect(self.generate_report)
 
-    def DisksInfoWMI(self) -> dict:
-        # Conectarse a la clase Win32_LogicalDisk de WMI
-        w = wmi.WMI()
+        layout = QVBoxLayout()
+        layout.addWidget(self.summary_label)
+        layout.addWidget(self.domain_label)
+        layout.addWidget(self.filename_label)
+        layout.addWidget(self.filename_input)
+        layout.addWidget(self.ip_connections_table)
+        layout.addWidget(self.disk_info_table)
+        layout.addWidget(self.open_ports_table)
+        layout.addWidget(self.cpu_info_table)
+        layout.addWidget(self.generate_report_button)
 
-        disk_info = []
-        for disk in w.Win32_LogicalDisk():
-            disk_info.append({
-                'Volume Name': disk.VolumeName,
-                'File System Type': disk.FileSystem,
-                'DeviceID': disk.DeviceID,
-                'Total Size': disk.Size ,
-                'Free Space': disk.FreeSpace, 
-                'Used Space': disk.Size,
-                'serial_number': disk.VolumeSerialNumber,
-                'Model': disk
-            })
-        return disk_info
-    def getDisksInfo(self) -> dict:
-        combined_info = []
+        self.setLayout(layout)
+        self.setWindowTitle("Información del Equipo")
 
-        # Obtener información de psutil
-        psutil_info = self.DisksInfoPsutil()
+    def update_summary_label(self):
+        summary_text = f"Nombre de Equipo: {self.computer.getComputerName()}\nUsuario: {self.computer.getUserName()}\nDirección IP: {self.computer.getAdressIp()}"
+        self.summary_label.setText(summary_text)
 
-        # Obtener información de wmi
-        wmi_info = self.DisksInfoWMI()
+    def update_domain_label(self):
+        domain_text = f"Dominio: {self.computer.getDomainName()}"
+        self.domain_label.setText(domain_text)
 
-        # Combinar la información de psutil y wmi
-        for psutil_disk in psutil_info:
-            for wmi_disk in wmi_info:
-                if psutil_disk['Mount Point'][:2] == wmi_disk['DeviceID']:
-                    combined_info.append({
-                        'Mount Point': psutil_disk['Mount Point'],
-                        'Total Size': psutil_disk['Total Size'],
-                        'Free Space': psutil_disk['Free Space'],
-                        'Used Space': psutil_disk['Used Space'],
-                        'File System Type': psutil_disk['File System Type'],
-                        'Volume Name': wmi_disk['Volume Name'],
-                        'DeviceID': wmi_disk['DeviceID'],
-                        'Serial Number': wmi_disk['serial_number']
-                    })
-                    break
+    def populate_ip_connections_table(self):
+        ip_connections = self.computer.getAllIpWithMAC()
+        self.ip_connections_table.setColumnCount(3)
+        self.ip_connections_table.setHorizontalHeaderLabels(["Interface Name", "IP Address", "MAC Address"])
+        self.ip_connections_table.setRowCount(len(ip_connections))
+        for row, (interface, info) in enumerate(ip_connections.items()):
+            ip_address = info['IPs'][0] if info['IPs'] else "N/A"
+            mac_address = info['MAC']
+            self.ip_connections_table.setItem(row, 0, QTableWidgetItem(interface))
+            self.ip_connections_table.setItem(row, 1, QTableWidgetItem(ip_address))
+            self.ip_connections_table.setItem(row, 2, QTableWidgetItem(mac_address))
 
-        return combined_info
-    
-    def GetPortsOpenLocal(self) -> dict:
-        nm = nmap.PortScanner()
-        nm.scan('127.0.0.1', arguments='-p- -sS')  # Escaneo rápido de puertos en la dirección IP local
-        open_ports = {}
+    def populate_disk_info_table(self):
+        disk_info = self.computer.getDisksInfo()
+        self.disk_info_table.setColumnCount(7)
+        self.disk_info_table.setHorizontalHeaderLabels(
+            ["Mount Point", "Total Size", "Free Space", "Used Space", "File System Type", "Volume Name", "Serial Number"]
+        )
+        self.disk_info_table.setRowCount(len(disk_info))
+        for row, disk in enumerate(disk_info):
+            volume_name = disk.get('Volume Name', 'N/A')
+            serial_number = disk.get('Serial Number', 'N/A')
+            if not volume_name or volume_name == '': volume_name = 'N/A'
+            self.disk_info_table.setItem(row, 0, QTableWidgetItem(disk['Mount Point']))
+            self.disk_info_table.setItem(row, 1, QTableWidgetItem(str(disk['Total Size'])))
+            self.disk_info_table.setItem(row, 2, QTableWidgetItem(str(disk['Free Space'])))
+            self.disk_info_table.setItem(row, 3, QTableWidgetItem(str(disk['Used Space'])))
+            self.disk_info_table.setItem(row, 4, QTableWidgetItem(disk['File System Type']))
+            self.disk_info_table.setItem(row, 5, QTableWidgetItem(volume_name))
+            self.disk_info_table.setItem(row, 6, QTableWidgetItem(serial_number))
 
-        for host in nm.all_hosts():
-            for proto in nm[host].all_protocols():
-                ports = nm[host][proto].keys()
-                for port in ports:
-                    if nm[host][proto][port]['state'] == 'open':
-                        open_ports[port] = {
-                            'service': nm[host][proto][port]['name'],
-                            'state': nm[host][proto][port]['state'],
-                            'reason': nm[host][proto][port]['reason']
-                        }
-        return open_ports
-    def Resumendic(self) -> dict:
-        resumen_info = {
-            "Computer Name": self.getComputerName(),
-            "Domain PC":self.domain,
-            "IP Address": self.getAdressIp(),
-            "User Name": self.getUserName(),
-            "Disk Information": self.getDisksInfo()
-        }
-        return resumen_info
+    def populate_open_ports_table(self):
+        open_ports = self.computer.GetPortsOpenLocal()
+        self.open_ports_table.setColumnCount(4)
+        self.open_ports_table.setHorizontalHeaderLabels(["Port", "Service", "State", "Reason"])
+        self.open_ports_table.setRowCount(len(open_ports))
+        for row, (port, info) in enumerate(open_ports.items()):
+            service = info['service']
+            state = info['state']
+            reason = info['reason']
+            if not service or service == '': service = 'Desconocido'
+            self.open_ports_table.setItem(row, 0, QTableWidgetItem(str(port)))
+            self.open_ports_table.setItem(row, 1, QTableWidgetItem(service))
+            self.open_ports_table.setItem(row, 2, QTableWidgetItem(state))
+            self.open_ports_table.setItem(row, 3, QTableWidgetItem(reason))  # Corrección: cerrar paréntesis
 
 
-    def getCpuDetails(self)-> dict:
-        info = cpuinfo.get_cpu_info()
+    def populate_cpu_info_table(self):
+        cpu_info = self.computer.getCpuDetails()
+        properties = ['Model', 'Architecture', 'Bits', 'Cores', 'CPU Frequency', 'L2 Cache Size', 'L3 Cache Size']
+        self.cpu_info_table.setColumnCount(len(properties))
+        self.cpu_info_table.setRowCount(1)  # Una fila para mostrar los datos
 
-        cpu_info = {
-            "Model": info["brand_raw"],
-            "Architecture": info["arch"],
-            "Bits": info["bits"],
-            "Cores": info["count"],
-            "CPU Frequency": info["hz_actual_friendly"],
-            "L2 Cache Size": info['l2_cache_size'],
-            "L3 Cache Size": info['l3_cache_size']
-        }
-        return cpu_info
-
-    def getDomainName(self):
-        c = wmi.WMI()
-        computer = c.Win32_ComputerSystem()
-        domain = computer[0].Domain
-        return domain
-
-    def FullInfoDic(self) -> dict:
-        full_info = {
-            "Computer Name": self.getComputerName(),
-            "IP Address": self.getAdressIp(),
-            "User Name": self.getUserName(),
-            "Domain PC":self.domain,
-            "All IP Connections": self.getAllIpWithMAC(),
-            "Disk Information": self.getDisksInfo(),
-            "Open Ports Local": self.GetPortsOpenLocal(),
-            "CPU Info": self.getCpuDetails()
-        }
-        return full_info
+        for col, prop in enumerate(properties):
+            if prop in cpu_info:
+                self.cpu_info_table.setHorizontalHeaderItem(col, QTableWidgetItem(prop))
+                self.cpu_info_table.setItem(0, col, QTableWidgetItem(str(cpu_info[prop])))
+            else:
+                self.cpu_info_table.setHorizontalHeaderItem(col, QTableWidgetItem(prop))
+                self.cpu_info_table.setItem(0, col, QTableWidgetItem("N/A"))
 
 
-    def _get_size_info(self, size) -> str:
-        size = int(size)
-        if size < 1024:
-            return f"{size} B"
-        elif size < 1024 * 1024:
-            return f"{size / 1024:.2f} KB"
-        elif size < 1024 * 1024 * 1024:
-            return f"{size / (1024 * 1024):.2f} MB"
-        else:
-            return f"{size / (1024 * 1024 * 1024):.2f} GB"
-        
-    def generar_informe(self) -> dict:
-        try:
-            file_name= self.getFileName()
-            with open(file_name, 'w', encoding='utf-8') as file:
-                full_info = self.FullInfoDic()
 
-                # Sección del resumen
-                file.write("# Resumen de Información\n\n")
-                file.write(f"- **User Name:** {full_info['User Name']}\n")
-                file.write(f"- **Computer Name:** {full_info['Computer Name']}\n")
-                file.write(f"- **Model CPU:** {full_info['CPU Info']['Model']}\n")
-                file.write(f"- **Domain PC:** {full_info['Domain PC']}\n")
-                file.write(f"- **IP Address:** {full_info['IP Address']}\n")
-                file.write("\n**Disk Information:**\n\n")
-                file.write("| Mount Point | Total Size |\n")
-                file.write("| --- | --- |\n")
-                for disk in full_info['Disk Information']:
-                    file.write(f"| {disk['Mount Point']} | {self._get_size_info(disk['Total Size'])} |\n")
 
-                file.write("\n\n# Información Completa\n\n")
-                
-                # Información de todas las conexiones IP con sus MACs
-                file.write("- **All IP Connections:**\n\n")
-                file.write("| Interface Name | IP Address | MAC Address |\n")
-                file.write("| --- | --- | --- |\n")
-                for interface, info in full_info['All IP Connections'].items():
-                    file.write(f"| {interface} | {info['IPs'][0]} | {info['MAC']} |\n")
-                file.write("\n\n# CPU Information\n\n")
-                file.write("| Property | Value |\n")
-                file.write("| --- | --- |\n")
-                for key, value in full_info['CPU Info'].items():
-                    file.write(f"| {key} | {value} |\n")
-                file.write(" \n\n# **Disk Information:**\n\n")
-                file.write("| Mount Point | Total Size | Free Space | Used Space | File System Type | Volume Name | Serial Number |\n")
-                file.write("| --- | --- | --- | --- | --- | --- | --- |\n")
-                for disk in full_info['Disk Information']:
-                    volume_name = volume_name = disk['Volume Name'] if disk.get('Volume Name') and disk['Volume Name'] != '' else 'N/A'
-                    file.write(f"| {disk['Mount Point']} | {self._get_size_info(disk['Total Size'])} | {self._get_size_info(disk['Free Space'])} | {self._get_size_info(disk['Used Space'])} | {disk['File System Type']} | {volume_name} | {disk['Serial Number']} |\n")
-                # Sección de los puertos abiertos
-                file.write("\n\n# Open Ports Information\n\n")
-                file.write("| Port | Service | State | Reason |\n")
-                file.write("| --- | --- | --- | --- |\n")
-                for port, info in full_info['Open Ports Local'].items():
-                    if info['service'].lower() in ['http', 'https', 'ftp', 'ssh', 'telnet']:
-                        file.write(f"| **{port}** | **{info['service']}** | **{info['state']}** | **{info['reason']}** |\n")
-                    else:
-                        file.write(f"| {port} | {info['service']} | {info['state']} | {info['reason']} |\n")
-                            # Resto de la información detallada para el informe completo...
+    def generate_report(self):
+        new_filename = self.filename_input.text()
+        self.computer.setFileName(new_filename)
+        report_status = self.computer.generar_informe()
+        # Puedes mostrar el estado del informe en la interfaz, por ejemplo, en una etiqueta
 
-            return {
-                'status': 'success',
-                'description': f"Informe generado en '{file_name}'"
-            }
-        except FileNotFoundError as e:
-            return {
-                'status': 'error',
-                'description': f"No se encontró el archivo: {str(e)}"
-            }
-        except PermissionError as e:
-            return {
-                'status': 'error',
-                'description': f"Error de permisos al crear el archivo: {str(e)}"
-            }
-        except Exception as e:
-            return {
-                'status': 'error',
-                'description': f"Error al generar el informe: {str(e)}"
-            }
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+
+    # Crear una instancia de la clase Computer
+    computer_instance = Computer()  # Asegúrate de pasar los argumentos necesarios si hay alguna configuración específica
+
+    window = ComputerGUI(computer_instance)
+    window.show()
+
+    sys.exit(app.exec_())
